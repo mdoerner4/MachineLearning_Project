@@ -1,0 +1,105 @@
+---
+title: "Predicting Quality of Weight Lifting Exercise"
+author: "Mike"
+date: "October 26, 2014"
+output: html_document
+---
+
+### Summary
+In this analysis, data from on-body sensors was used to develop a predictive model. The motion performed was a dumbbell bicep curl, and it was classifiedng correct form or 1 of 4 incorrect form classifciations. Each row from the dataset corresponded to 5 classification types: A (correct), B(elbow to the front), C (dumbbell lifted halfway), D (dumbbell lowered halfway), and E (hips to the front). The goal of the predictive analysis was to determine if quantitative measures could use to classify the different lifting techniques.
+
+More information about the data can be found here: http://groupware.les.inf.puc-rio.br/har 
+
+### Load data
+Two datasets were downloaded and loaded into R: training data and test data. The test data is a set of 20 test cases.
+
+Training data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Testing data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The table below shows the number of cases for each of the 5 classes.
+
+```{r, cache=TRUE}
+training_data <- read.csv("pml-training.csv")
+test20 <- read.csv("pml-testing.csv")
+table(training_data$classe)
+```
+
+### Cross Validation
+Cross validation was preformed on the training data by randomly sampling 75% of this dataset to a training subset, with the remaining 25% making up a testing subset. This was performed using the createDataPartition function in the caret package. The tables below show the number of the different classes in training and testing subsets.
+
+```{r, cache=TRUE}
+library(caret)
+set.seed(4444)
+inTrain <- createDataPartition(y=training_data$classe, p=0.75, list=FALSE)
+
+training <- training_data[inTrain,]
+testing <- training_data[-inTrain,]
+
+table(training$classe)
+table(testing$classe)
+```
+
+### Data Features
+By using the training set, features of the data can be explored. Specifically, this analysis focused on the pitch and roll variables of the 4 sensors: belt, arm, forearm, and dumbbell. The pitch and the roll are 2 Eular angles, quantifying the rotation about the x and y axes. These rotations are expected to differ across the different classes. By looking a plot of roll_belt, it can bee seen that the median value for classe A is near 0, while much higher for the other classes.
+
+```{r, cache=TRUE}
+plot(training$classe, training$roll_belt)
+```
+
+Also, as the 2 plots below show, their do not seem to be clear relationships between the roll and pitch measurements for a given sensor (belt in plot1) or between sensors for a given Eular angle (plot2).
+```{r, cache=TRUE}
+library(ggplot2)
+qplot(pitch_belt, roll_belt, colour=classe, data=training)
+qplot(roll_arm, roll_forearm, colour=classe, data=training)
+```
+
+Both the training and testing sets were therefore subset to only include these pitch and roll columns.
+
+```{r, cache=TRUE}
+cols <- c("classe", 
+          "pitch_belt", "roll_belt", 
+          "pitch_arm", "roll_arm",
+          "pitch_forearm", "roll_forearm",
+          "pitch_dumbbell", "roll_dumbbell")
+
+training <- training[, cols]
+testing <- testing[, cols]
+```
+
+### Model
+A model was developed using the subsetted training set with the pitch and roll variables. A Random Forest model was used. 
+
+```{r, cache=TRUE}
+set.seed(1)
+modfit <- train(classe ~ ., method="rf", data=training)
+print(modfit)
+```
+
+Next, the model is used to predict the classe in our testing set. The table shows how many of the predictions were correct across classes in the testing set.
+```{r, cache=TRUE}
+pred <- predict(modfit, testing)
+testing$predright <- pred==testing$classe
+table(pred, testing$classe)
+```
+
+```{r}
+inerr <- 1 - round(sum(testing$predright)/length(testing$predright),2)
+```
+
+The sample error for the model is `r inerr`. The out of sample error is expected to be greater.
+
+By looking at the roll arm and forearm data, many of the incorrect predictions are grouped together in the upper right quadrant, which had overlaps of all 4 cases in the previously shown plot of the training set.
+
+```{r, cache=TRUE}
+qplot(roll_arm, roll_forearm, colour=predright, data=testing)
+```
+
+### Test cases
+Finally, the model was used to predict the 20 test cases in the oringinal test dataset.
+
+```{r}
+tpred <- predict(modfit, test20)
+test20$predict <- tpred
+print(test20[,c("X", "predict")])
+```
